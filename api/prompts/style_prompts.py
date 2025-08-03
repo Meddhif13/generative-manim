@@ -1,15 +1,21 @@
 """Utilities for building system prompts with narrative styles."""
-from typing import Callable
+
+# Supported narrative styles for the system prompt builder
+SUPPORTED_STYLES = [
+    "1b3b-feynman-veritasium",
+    "1b3b",
+    "feynman",
+    "veritasium",
+]
 
 def build_system_prompt(style: str) -> str:
     """Return a system prompt for the given narrative ``style``.
 
-    Parameters
-    ----------
-    style: str
-        Identifier of the style to apply. Currently supports:
-        ``"1b3b-feynman-veritasium"`` (default), ``"1b3b"``, ``"feynman"``,
-        and ``"veritasium"``.
+    Supported styles are listed in :data:`SUPPORTED_STYLES`.
+    The prompt instructs the model to produce Manim code using the ``GenScene``
+    class and ``self.play`` for animations without plain-text explanation.
+    Each style appends its own narrative guidance aimed at high-school level
+    mathematics.
     """
     base_prompt = (
         "You are an assistant that writes Manim code.\n"
@@ -19,23 +25,27 @@ def build_system_prompt(style: str) -> str:
         "- Target high-school mathematics (algebra, geometry, trigonometry and introductory calculus).\n"
     )
 
-    narrative_prompt = (
+    blended = (
         "Blend the narrative styles of 3Blue1Brown, Richard Feynman and Veritasium.\n"
         "Provide step-by-step visual intuition (3Blue1Brown), use simple analogies (Feynman)\n"
         "and weave a real-world narrative (Veritasium)."
     )
 
-    if style == "1b3b-feynman-veritasium":
-        return f"{base_prompt}\n{narrative_prompt}"
-    elif style == "1b3b":
-        # TODO: specialize for pure 3Blue1Brown style
-        return f"{base_prompt}\n{narrative_prompt}"
-    elif style == "feynman":
-        # TODO: specialize for pure Feynman style
-        return f"{base_prompt}\n{narrative_prompt}"
-    elif style == "veritasium":
-        # TODO: specialize for pure Veritasium style
-        return f"{base_prompt}\n{narrative_prompt}"
-    else:
-        # Unknown style defaults to the blended narrative
-        return f"{base_prompt}\n{narrative_prompt}"
+    style_prompts = {
+        "1b3b-feynman-veritasium": blended,
+        "1b3b": (
+            "Emphasise intuitive visual derivations and a clear, step-by-step proof "
+            "structure in the spirit of 3Blue1Brown."
+        ),
+        "feynman": (
+            "Explain concepts using simple analogies and a friendly, conversational "
+            "tone reminiscent of Richard Feynman."
+        ),
+        "veritasium": (
+            "Focus on storytelling, curiosity-driven questions and real-world context "
+            "as seen in Veritasium videos."
+        ),
+    }
+
+    narrative_prompt = style_prompts.get(style, blended)
+    return f"{base_prompt}\n{narrative_prompt}" 

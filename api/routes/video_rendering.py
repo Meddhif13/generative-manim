@@ -1,10 +1,7 @@
-from flask import Blueprint, jsonify, current_app, request, Response
+from flask import Blueprint, jsonify, request
 import subprocess
 import os
-import re
 import json
-import sys
-import traceback
 from azure.storage.blob import BlobServiceClient
 import shutil
 from typing import Union
@@ -72,6 +69,139 @@ def get_frame_config(aspect_ratio):
         return (3840, 2160), 14.22
 
 
+def _render_single_video(data):
+    """Render a single video and return result metadata.
+
+    Parameters
+    ----------
+    data: dict
+        Request payload containing ``code``, ``file_class`` and other metadata.
+
+    Returns
+    -------
+    dict
+        Result containing ``prompt``, ``code``, ``video_url``, ``time`` and ``error``.
+    """
+
+    start_time = time.time()
+    code = data.get("code")
+    file_name = data.get("file_name")
+    file_class = data.get("file_class")
+
+    user_id = data.get("user_id") or str(uuid.uuid4())
+    project_name = data.get("project_name")
+    iteration = data.get("iteration")
+    aspect_ratio = data.get("aspect_ratio")
+    prompt = data.get("prompt")
+
+    video_storage_file_name = f"video-{user_id}-{project_name}-{iteration}"
+
+    if not code:
+        return {
+            "prompt": prompt,
+            "code": code,
+            "error": "No code provided",
+            "time": time.time() - start_time,
+        }
+
+    frame_size, frame_width = get_frame_config(aspect_ratio)
+
+    modified_code = f"""
+from manim import *
+from math import *
+
+{code}
+    """
+
+    file_name = file_name or f"{file_class or 'GenScene'}.py"
+    file_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), file_name)
+
+    try:
+        with open(file_path, "w") as f:
+            f.write(modified_code)
+
+        def inner_render():
+            try:
+                command_list = [
+                    "manim",
+                    file_path,
+                    file_class,
+                    "--format=mp4",
+                    "--media_dir",
+                    ".",
+                    "--custom_folders",
+                ]
+
+                process = subprocess.Popen(
+                    command_list,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    cwd=os.path.dirname(os.path.realpath(__file__)),
+                    text=True,
+                    bufsize=1,
+                )
+                error_output = []
+                while True:
+                    output = process.stdout.readline()
+                    error = process.stderr.readline()
+                    if output == "" and error == "" and process.poll() is not None:
+                        break
+                    if error:
+                        error_output.append(error.strip())
+
+                if process.returncode == 0:
+                    video_file_path = os.path.join(
+                        os.path.dirname(os.path.realpath(__file__)),
+                        f"{file_class or 'GenScene'}.mp4",
+                    )
+                    if not os.path.exists(video_file_path):
+                        video_file_path = os.path.join(
+                            os.path.dirname(os.path.dirname(os.path.realpath(__file__))),
+                            f"{file_class or 'GenScene'}.mp4",
+                        )
+                    if USE_LOCAL_STORAGE:
+                        base_url = (
+                            request.host_url if request and hasattr(request, "host_url") else None
+                        )
+                        video_url = move_to_public_folder(
+                            video_file_path, video_storage_file_name, base_url
+                        )
+                    else:
+                        video_url = upload_to_azure_storage(
+                            video_file_path, video_storage_file_name
+                        )
+                    return {"video_url": video_url}
+                else:
+                    full_error = "\n".join(error_output)
+                    return {"error": full_error}
+            except Exception as e:
+                return {"error": str(e)}
+            finally:
+                if os.path.exists(file_path):
+                    os.remove(file_path)
+                video_file = os.path.join(
+                    os.path.dirname(os.path.realpath(__file__)),
+                    f"{file_class or 'GenScene'}.mp4",
+                )
+                if os.path.exists(video_file):
+                    os.remove(video_file)
+
+        result = inner_render()
+        result.update({
+            "prompt": prompt,
+            "code": code,
+            "time": time.time() - start_time,
+        })
+        return result
+    except Exception as e:
+        return {
+            "prompt": prompt,
+            "code": code,
+            "error": str(e),
+            "time": time.time() - start_time,
+        }
+
+
 @video_rendering_bp.route("/v1/video/rendering", methods=["POST"])
 def render_video():
     data = request.json or {}
@@ -84,268 +214,15 @@ def render_video():
             payload.pop("codes", None)
             payload["iteration"] = f"{data.get('iteration', 0)}-{i}"
             payload.setdefault("stream", False)
-            start = time.time()
-            with current_app.test_request_context(json=payload):
-                resp = render_video()
-                if isinstance(resp, tuple):
-                    resp_obj, status = resp
-                    res_json = resp_obj.get_json()
-                else:
-                    res_json = resp.get_json()
-            results.append({
-                "prompt": item.get("prompt"),
-                "code": item.get("code"),
-                "video_url": res_json.get("video_url") if res_json else None,
-                "time": time.time() - start,
-            })
+            result = _render_single_video(payload)
+            results.append(result)
         return jsonify({"videos": results}), 200
 
-    # Extract the rest of the request data for single rendering
-    code = data.get("code")
-    file_name = data.get("file_name")
-    file_class = data.get("file_class")
-
-    user_id = data.get("user_id") or str(uuid.uuid4())
-    project_name = data.get("project_name")
-    iteration = data.get("iteration")
-
-    # Aspect Ratio can be: "16:9" (default), "1:1", "9:16"
-    aspect_ratio = data.get("aspect_ratio")
-
-    # Stream the percentage of animation it shown in the error
-    stream = data.get("stream", False)
-
-    video_storage_file_name = f"video-{user_id}-{project_name}-{iteration}"
-
-    if not code:
-        return jsonify(error="No code provided"), 400
-
-    # Determine frame size and width based on aspect ratio
-    frame_size, frame_width = get_frame_config(aspect_ratio)
-
-    # Modify the Manim script to include configuration settings
-    modified_code = f"""
-from manim import *
-from math import *
-config.frame_size = {frame_size}
-config.frame_width = {frame_width}
-
-{code}
-    """
-
-    # Create a unique file name
-    file_name = f"scene_{os.urandom(2).hex()}.py"
-    
-    # Adjust the path to point to /api/public/
-    api_dir = os.path.dirname(os.path.dirname(__file__))  # Go up one level from routes
-    public_dir = os.path.join(api_dir, "public")
-    os.makedirs(public_dir, exist_ok=True)  # Ensure the public directory exists
-    file_path = os.path.join(public_dir, file_name)
-
-    # Write the code to the file
-    with open(file_path, "w") as f:
-        f.write(modified_code)
-
-    def render_video():
-        try:
-            command_list = [
-                "manim",
-                file_path,  # Use the full path to the file
-                file_class,
-                "--format=mp4",
-                "--media_dir",
-                ".",
-                "--custom_folders",
-            ]
-
-            process = subprocess.Popen(
-                command_list,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                cwd=os.path.dirname(os.path.realpath(__file__)),
-                text=True,
-                bufsize=1,  # Ensure the output is in text mode and line-buffered
-            )
-            current_animation = -1
-            current_percentage = 0
-            error_output = []
-            in_error = False
-
-            while True:
-                output = process.stdout.readline()
-                error = process.stderr.readline()
-
-                if output == "" and error == "" and process.poll() is not None:
-                    break
-
-                if output:
-                    print("STDOUT:", output.strip())
-                if error:
-                    print("STDERR:", error.strip())
-                    error_output.append(error.strip())
-                    
-                # Check for critical errors
-                if "is not in the script" in error:
-                    in_error = True
-                    continue
-
-                # Check for start of error
-                if "Traceback (most recent call last)" in error:
-                    in_error = True
-                    continue
-
-                # If we're in an error state, keep accumulating the error message
-                if in_error:
-                    if error.strip() == "":
-                        # Empty line might indicate end of traceback
-                        in_error = False
-                        full_error = "\n".join(error_output)
-                        yield f'{{"error": {json.dumps(full_error)}}}\n'
-                        return
-                    continue
-
-                animation_match = re.search(r"Animation (\d+):", error)
-                if animation_match:
-                    new_animation = int(animation_match.group(1))
-                    if new_animation != current_animation:
-                        current_animation = new_animation
-                        current_percentage = 0
-                        yield f'{{"animationIndex": {current_animation}, "percentage": 0}}\n'
-
-                percentage_match = re.search(r"(\d+)%", error)
-                if percentage_match:
-                    new_percentage = int(percentage_match.group(1))
-                    if new_percentage != current_percentage:
-                        current_percentage = new_percentage
-                        yield f'{{"animationIndex": {current_animation}, "percentage": {current_percentage}}}\n'
-
-            if process.returncode == 0:
-                # Update this part
-                video_file_path = os.path.join(
-                    os.path.dirname(os.path.realpath(__file__)),
-                    f"{file_class or 'GenScene'}.mp4"
-                )
-                # Looking for video file at: {video_file_path}
-                
-                if not os.path.exists(video_file_path):
-                    #  Video file not found. Searching in parent directory...
-                    video_file_path = os.path.join(
-                        os.path.dirname(os.path.dirname(os.path.realpath(__file__))),
-                        f"{file_class or 'GenScene'}.mp4"
-                    )
-                    # New video file path is: {video_file_path}
-
-                if os.path.exists(video_file_path):
-                    print(f"Video file found at: {video_file_path}")
-                else:
-                    print(f"Video file not found. Files in current directory: {os.listdir(os.path.dirname(video_file_path))}")
-                    raise FileNotFoundError(f"Video file not found at {video_file_path}")
-
-                print(f"Files in video file directory: {os.listdir(os.path.dirname(video_file_path))}")
-                
-                if USE_LOCAL_STORAGE:
-                    # Pass request.host_url if available
-                    base_url = (
-                        request.host_url
-                        if request and hasattr(request, "host_url")
-                        else None
-                    )
-                    video_url = move_to_public_folder(
-                        video_file_path, video_storage_file_name, base_url
-                    )
-                else:
-                    video_url = upload_to_azure_storage(
-                        video_file_path, video_storage_file_name
-                    )
-                print(f"Video URL: {video_url}")
-                if stream:
-                    yield f'{{ "video_url": "{video_url}" }}\n'
-                    sys.stdout.flush()
-                else:
-                    yield {
-                        "message": "Video generation completed",
-                        "video_url": video_url,
-                    }
-            else:
-                full_error = "\n".join(error_output)
-                yield f'{{"error": {json.dumps(full_error)}}}\n'
-
-        except Exception as e:
-            print(f"Unexpected error: {str(e)}")
-            traceback.print_exc()
-            print(f"Files in current directory after error: {os.listdir('.')}")
-            yield f'{{"error": "Unexpected error occurred: {str(e)}"}}\n'
-        finally:
-            # Remove the temporary Python file
-            try:
-                if os.path.exists(file_path):
-                    os.remove(file_path)
-                    print(f"Removed temporary file: {file_path}")
-                # Remove the video file
-                if os.path.exists(video_file_path):
-                    os.remove(video_file_path)
-                    print(f"Removed temporary video file: {video_file_path}")
-            except Exception as e:
-                print(f"Error removing temporary file {file_path}: {e}")
-
-    if stream:
-        # TODO: If the `render_video()` fails, or it's sending {"error"}, be sure to add `500`
-        return Response(
-            render_video(), content_type="text/event-stream", status=207
-        )
-    else:
-        video_url = None
-        try:
-            for result in render_video():  # Iterate through the generator
-                print(f"Generated result: {result}")  # Debug print
-                if isinstance(result, dict):
-                    if "video_url" in result:
-                        video_url = result["video_url"]
-                    elif "error" in result:
-                        raise Exception(result["error"])
-
-            if video_url:
-                return (
-                    jsonify(
-                        {
-                            "message": "Video generation completed",
-                            "video_url": video_url,
-                        }
-                    ),
-                    200,
-                )
-            else:
-                return (
-                    jsonify(
-                        {
-                            "message": "Video generation completed, but no URL was found"
-                        }
-                    ),
-                    200,
-                )
-        except StopIteration:
-            if video_url:
-                return (
-                    jsonify(
-                        {
-                            "message": "Video generation completed",
-                            "video_url": video_url,
-                        }
-                    ),
-                    200,
-                )
-            else:
-                return (
-                    jsonify(
-                        {
-                            "message": "Video generation completed, but no URL was found"
-                        }
-                    ),
-                    200,
-                )
-        except Exception as e:
-            print(f"Error in non-streaming mode: {e}")
-            return jsonify({"error": str(e)}), 500
+    # Single rendering
+    # TODO: Consider asynchronous job handling here for future scalability.
+    result = _render_single_video(data)
+    status = 200 if not result.get("error") else 500
+    return jsonify(result), status
 
 
 @video_rendering_bp.route("/v1/video/exporting", methods=["POST"])

@@ -21,6 +21,25 @@ from .code_generation import generate_code_for_prompt
 
 chat_generation_bp = Blueprint("chat_generation", __name__)
 
+# Default and valid models for each engine. Exposed via /v1/models.
+ENGINE_DEFAULTS = {
+    "openai": "gpt-4o",
+    "anthropic": "claude-35-sonnet",
+    "deepseek": "r1",
+}
+
+VALID_MODELS = {
+    "openai": ["gpt-4o", "o1-mini"],
+    "anthropic": ["claude-35-sonnet"],
+    "deepseek": ["r1"],
+}
+
+
+@chat_generation_bp.route("/v1/models", methods=["GET"])
+def available_models():
+    """Return the default and valid models for each engine."""
+    return jsonify({"engine_defaults": ENGINE_DEFAULTS, "valid_models": VALID_MODELS})
+
 
 animo_functions = {
     "openai": [
@@ -168,13 +187,6 @@ def generate_code_chat():
     codes = data.get("codes", [])
     prompt_index = data.get("prompt_index", 0)
 
-    # Define default models for each engine
-    ENGINE_DEFAULTS = {
-        "openai": "gpt-4o",
-        "anthropic": "claude-35-sonnet",
-        "deepseek": "r1"
-    }
-
     # Validate and set the model based on engine
     if engine not in ENGINE_DEFAULTS:
         return jsonify({"error": f"Invalid engine. Must be one of: {', '.join(ENGINE_DEFAULTS.keys())}"}), 400
@@ -200,12 +212,6 @@ def generate_code_chat():
                 msg["content"] = f"{msg.get('content', '')}\n\nExisting code:\n```python\n{existing_code}\n```"
 
     # Validate model based on engine
-    VALID_MODELS = {
-        "openai": ["gpt-4o", "o1-mini"],
-        "anthropic": ["claude-35-sonnet"],
-        "deepseek": ["r1"]
-    }
-
     if model not in VALID_MODELS[engine]:
         return jsonify({
             "error": f"Invalid model '{model}' for engine '{engine}'. Valid models are: {', '.join(VALID_MODELS[engine])}"
@@ -700,9 +706,26 @@ from math import *
 
         def stream_with_index():
             for chunk in generate():
-                yield f"{prompt_index}:{chunk}"
+                if is_for_platform:
+                    yield f"{prompt_index}:{chunk}"
+                else:
+                    data = json.dumps({"prompt_index": prompt_index, "content": chunk})
+                    yield f"data: {data}\n\n"
 
-        response = Response(stream_with_context(stream_with_index()), content_type="text/plain; charset=utf-8" if is_for_platform else "text/event-stream")
+            if not is_for_platform:
+                final_payload = json.dumps({
+                    "prompt_index": prompt_index,
+                    "improved_code": [
+                        c.get("code") if isinstance(c, dict) else c for c in codes
+                    ],
+                    "final": True,
+                })
+                yield f"data: {final_payload}\n\n"
+
+        response = Response(
+            stream_with_context(stream_with_index()),
+            content_type="text/plain; charset=utf-8" if is_for_platform else "text/event-stream",
+        )
         if is_for_platform:
             response.headers['Transfer-Encoding'] = 'chunked'
             response.headers['x-vercel-ai-data-stream'] = 'v1'
@@ -987,9 +1010,19 @@ from math import *
 
         def stream_with_index():
             for chunk in generate():
-                yield f"{prompt_index}:{chunk}"
+                data = json.dumps({"prompt_index": prompt_index, "content": chunk})
+                yield f"data: {data}\n\n"
 
-        response = Response(stream_with_context(stream_with_index()), content_type="text/plain; charset=utf-8")
+            final_payload = json.dumps({
+                "prompt_index": prompt_index,
+                "improved_code": [
+                    c.get("code") if isinstance(c, dict) else c for c in codes
+                ],
+                "final": True,
+            })
+            yield f"data: {final_payload}\n\n"
+
+        response = Response(stream_with_context(stream_with_index()), content_type="text/event-stream")
         if is_for_platform:
             response.headers['Transfer-Encoding'] = 'chunked'
             response.headers['x-vercel-ai-data-stream'] = 'v1'

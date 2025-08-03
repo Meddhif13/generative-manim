@@ -2,7 +2,7 @@ from flask import Blueprint, jsonify, request
 import anthropic
 import os
 from openai import OpenAI
-from api.prompts.style_prompts import build_system_prompt
+from api.prompts.style_prompts import build_system_prompt, SUPPORTED_STYLES
 
 code_generation_bp = Blueprint("code_generation", __name__)
 
@@ -41,6 +41,22 @@ def generate_code():
     prompt_content = body.get("prompt", "")
     model = body.get("model", "gpt-4o")
     style = body.get("style", "1b3b-feynman-veritasium")
+
+    if style not in SUPPORTED_STYLES:
+        return (
+            jsonify({"error": f"Invalid style. Must be one of: {', '.join(SUPPORTED_STYLES)}"}),
+            400,
+        )
+
+    if prompt_content and prompts:
+        return jsonify({"error": "Provide either 'prompt' or 'prompts', not both"}), 400
+
+    if prompts is not None:
+        if not isinstance(prompts, list):
+            return jsonify({"error": "'prompts' must be a list of strings"}), 400
+        if not all(isinstance(p, str) for p in prompts):
+            return jsonify({"error": "All items in 'prompts' must be strings"}), 400
+
     system_prompt = build_system_prompt(style)
 
     try:
@@ -54,6 +70,19 @@ def generate_code():
             code = generate_code_for_prompt(prompt_content, model, system_prompt)
             if prompts is None:
                 return jsonify({"code": code, "style": style})
-            return jsonify({"codes": [{"prompt": prompt_content, "code": code, "model": model}], "style": style})
+            return jsonify(
+                {
+                    "codes": [
+                        {"prompt": prompt_content, "code": code, "model": model}
+                    ],
+                    "style": style,
+                }
+            )
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+@code_generation_bp.route("/v1/styles", methods=["GET"])
+def available_styles():
+    """Return the list of supported narrative styles."""
+    return jsonify({"styles": SUPPORTED_STYLES})
