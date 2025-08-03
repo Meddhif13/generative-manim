@@ -85,6 +85,15 @@ Now that you have the API running, you can use it to generate Manim scripts and 
 
 ## 🍓 Usage
 
+### 📑 Available styles and models
+
+Query the API for supported narrative styles or model options:
+
+```bash
+curl http://127.0.0.1:8080/v1/styles
+curl http://127.0.0.1:8080/v1/models
+```
+
 ### 💻 How to generate Manim Code?
 
 Let's say you want to create a simple animation that shows a square transforming into a circle. You can use the `/v1/code/generation` endpoint with a POST request. Like this:
@@ -93,7 +102,11 @@ Let's say you want to create a simple animation that shows a square transforming
 curl -X POST http://127.0.0.1:8080/v1/code/generation \
 -H "Content-Type: application/json" \
 -d '{
-  "prompt": "Create a Manim animation that shows a square transforming into a circle"
+  "prompts": [
+    "Explain the Pythagorean theorem",
+    "Illustrate the unit circle"
+  ],
+  "style": "feynman"
 }'
 ```
 
@@ -116,6 +129,21 @@ curl -N -X POST http://127.0.0.1:8080/v1/chat/generation \
 ```
 
 When executed, the API will return the stream of the latest assistant message.
+
+### 🔁 Review mode
+
+Refine existing code by enabling `review_mode` in the chat endpoint:
+
+```bash
+curl -N -X POST http://127.0.0.1:8080/v1/chat/generation \
+-H "Content-Type: application/json" \
+-d '{
+  "messages": [{"role": "user", "content": "Can you simplify this?", "prompt_index": 0}],
+  "prompts": ["Explain the Pythagorean theorem"],
+  "codes": [{"prompt": "Explain the Pythagorean theorem", "code": "<existing code>"}],
+  "review_mode": true
+}'
+```
 
 ### 🎥 How to render a Manim video?
 

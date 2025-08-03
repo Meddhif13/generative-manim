@@ -16,8 +16,29 @@ import io
 import time
 from openai import APIError
 import uuid
+from api.prompts.style_prompts import build_system_prompt
+from .code_generation import generate_code_for_prompt
 
 chat_generation_bp = Blueprint("chat_generation", __name__)
+
+# Default and valid models for each engine. Exposed via /v1/models.
+ENGINE_DEFAULTS = {
+    "openai": "gpt-4o",
+    "anthropic": "claude-35-sonnet",
+    "deepseek": "r1",
+}
+
+VALID_MODELS = {
+    "openai": ["gpt-4o", "o1-mini"],
+    "anthropic": ["claude-35-sonnet"],
+    "deepseek": ["r1"],
+}
+
+
+@chat_generation_bp.route("/v1/models", methods=["GET"])
+def available_models():
+    """Return the default and valid models for each engine."""
+    return jsonify({"engine_defaults": ENGINE_DEFAULTS, "valid_models": VALID_MODELS})
 
 
 animo_functions = {
@@ -41,6 +62,22 @@ animo_functions = {
             },
             "output": {"type": "string", "description": "Images URLs of the animation that will be inserted in the conversation"},
         }
+        },
+        {
+            "name": "improve_code",
+            "description": "Review and enhance existing Manim code while respecting system rules.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "existing_code": {
+                        "type": "string",
+                        "description": "The current code to improve."
+                    }
+                },
+                "required": ["existing_code"],
+            },
+            "output": {"type": "string", "description": "Improved code snippet."},
+        }
     ],
     "anthropic": [
         {
@@ -59,6 +96,20 @@ animo_functions = {
                     }
                 },
                 "required": ["code", "class_name"]
+            }
+        },
+        {
+            "name": "improve_code",
+            "description": "Review and enhance existing Manim code while respecting system rules.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "existing_code": {
+                        "type": "string",
+                        "description": "The current code to improve."
+                    }
+                },
+                "required": ["existing_code"]
             }
         }
     ]
@@ -130,13 +181,11 @@ def generate_code_chat():
     model = data.get("model", None)  # Optional model parameter
     selected_scenes = data.get("selectedScenes", [])
     is_for_platform = data.get("isForPlatform", False)
-
-    # Define default models for each engine
-    ENGINE_DEFAULTS = {
-        "openai": "gpt-4o",
-        "anthropic": "claude-35-sonnet",
-        "deepseek": "r1"
-    }
+    review_mode = data.get("review_mode", False)
+    style = data.get("style", "1b3b-feynman-veritasium")
+    prompts_list = data.get("prompts", [])
+    codes = data.get("codes", [])
+    prompt_index = data.get("prompt_index", 0)
 
     # Validate and set the model based on engine
     if engine not in ENGINE_DEFAULTS:
@@ -146,13 +195,23 @@ def generate_code_chat():
     if not model:
         model = ENGINE_DEFAULTS[engine]
 
-    # Validate model based on engine
-    VALID_MODELS = {
-        "openai": ["gpt-4o", "o1-mini"],
-        "anthropic": ["claude-35-sonnet"],
-        "deepseek": ["r1"]
-    }
+    # Ensure initial code exists for each prompt when provided
+    style_prompt = build_system_prompt(style)
+    if prompts_list and len(codes) < len(prompts_list):
+        for idx, pr in enumerate(prompts_list):
+            if idx >= len(codes) or not codes[idx]:
+                generated_code = generate_code_for_prompt(pr, model, style_prompt)
+                codes.append({"prompt": pr, "code": generated_code, "model": model})
 
+    if review_mode:
+        for msg in messages:
+            idx = msg.get("prompt_index")
+            if idx is not None and idx < len(codes):
+                existing = codes[idx]
+                existing_code = existing["code"] if isinstance(existing, dict) else existing
+                msg["content"] = f"{msg.get('content', '')}\n\nExisting code:\n```python\n{existing_code}\n```"
+
+    # Validate model based on engine
     if model not in VALID_MODELS[engine]:
         return jsonify({
             "error": f"Invalid model '{model}' for engine '{engine}'. Valid models are: {', '.join(VALID_MODELS[engine])}"
@@ -164,7 +223,7 @@ def generate_code_chat():
     print("messages")
     print(messages)
 
-    general_system_prompt = """You are an assistant that creates animations with Manim. Manim is a mathematical animation engine that is used to create videos programmatically. You are running on Animo (www.animo.video), a tool to create videos with Manim.
+    general_system_prompt = style_prompt + "\n" + """You are an assistant that creates animations with Manim. Manim is a mathematical animation engine that is used to create videos programmatically. You are running on Animo (www.animo.video), a tool to create videos with Manim.
 
 # What the user can do?
 
@@ -536,7 +595,7 @@ from math import *
                                     if is_for_platform:
                                         for char in content:
                                             escaped_char = repr(char)[1:-1]
-                                            yield f'0:"{escaped_char}"\n'
+                                            yield f'"{escaped_char}"\n'
                                     else:
                                         yield content
                                 
@@ -607,8 +666,8 @@ from math import *
                                         if is_for_platform:
                                             for char in preview_text:
                                                 escaped_char = repr(char)[1:-1]
-                                                yield f'0:"{escaped_char}"\n'
-                                            yield f'0:"[IMAGE: Preview frame]"\n'
+                                                yield f'"{escaped_char}"\n'
+                                            yield f'"[IMAGE: Preview frame]"\n'
                                         else:
                                             yield "\n[Preview frame]\n"
                                         
@@ -642,10 +701,31 @@ from math import *
 
             except Exception as e:
                 print(f"\n=== Error occurred ===\nError details: {str(e)}")
-                error_message = f'0:"{str(e)}"\n' if is_for_platform else f"Error: {str(e)}"
+                error_message = f'{prompt_index}:"{str(e)}"\n' if is_for_platform else f"Error: {str(e)}"
                 yield error_message
 
-        response = Response(stream_with_context(generate()), content_type="text/plain; charset=utf-8" if is_for_platform else "text/event-stream")
+        def stream_with_index():
+            for chunk in generate():
+                if is_for_platform:
+                    yield f"{prompt_index}:{chunk}"
+                else:
+                    data = json.dumps({"prompt_index": prompt_index, "content": chunk})
+                    yield f"data: {data}\n\n"
+
+            if not is_for_platform:
+                final_payload = json.dumps({
+                    "prompt_index": prompt_index,
+                    "improved_code": [
+                        c.get("code") if isinstance(c, dict) else c for c in codes
+                    ],
+                    "final": True,
+                })
+                yield f"data: {final_payload}\n\n"
+
+        response = Response(
+            stream_with_context(stream_with_index()),
+            content_type="text/plain; charset=utf-8" if is_for_platform else "text/event-stream",
+        )
         if is_for_platform:
             response.headers['Transfer-Encoding'] = 'chunked'
             response.headers['x-vercel-ai-data-stream'] = 'v1'
@@ -927,7 +1007,22 @@ from math import *
                 yield final_message
 
         print("Generating response")
-        response = Response(stream_with_context(generate()), content_type="text/plain; charset=utf-8")
+
+        def stream_with_index():
+            for chunk in generate():
+                data = json.dumps({"prompt_index": prompt_index, "content": chunk})
+                yield f"data: {data}\n\n"
+
+            final_payload = json.dumps({
+                "prompt_index": prompt_index,
+                "improved_code": [
+                    c.get("code") if isinstance(c, dict) else c for c in codes
+                ],
+                "final": True,
+            })
+            yield f"data: {final_payload}\n\n"
+
+        response = Response(stream_with_context(stream_with_index()), content_type="text/event-stream")
         if is_for_platform:
             response.headers['Transfer-Encoding'] = 'chunked'
             response.headers['x-vercel-ai-data-stream'] = 'v1'

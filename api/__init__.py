@@ -4,6 +4,9 @@ from dotenv import load_dotenv
 from .routes.video_rendering import video_rendering_bp
 from .routes.code_generation import code_generation_bp
 from .routes.chat_generation import chat_generation_bp
+from api.prompts.style_prompts import build_system_prompt
+
+__version__ = "0.2.0"
 
 def create_app():
     app = Flask(__name__, static_folder="public", static_url_path="/public")
