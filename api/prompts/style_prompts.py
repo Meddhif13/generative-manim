@@ -8,7 +8,6 @@ SUPPORTED_STYLES = [
     "veritasium",
 ]
 
-
 def build_system_prompt(style: str) -> str:
     """Return a system prompt for the given narrative ``style``.
 
@@ -18,7 +17,6 @@ def build_system_prompt(style: str) -> str:
     Each style appends its own narrative guidance aimed at high-school level
     mathematics.
     """
-
     base_prompt = (
         "You are an assistant that writes Manim code.\n"
         "\n"
@@ -50,4 +48,4 @@ def build_system_prompt(style: str) -> str:
     }
 
     narrative_prompt = style_prompts.get(style, blended)
-    return f"{base_prompt}\n{narrative_prompt}"
+    return f"{base_prompt}\n{narrative_prompt}" 
