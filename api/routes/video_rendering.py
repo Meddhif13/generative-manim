@@ -74,35 +74,46 @@ def get_frame_config(aspect_ratio):
 
 @video_rendering_bp.route("/v1/video/rendering", methods=["POST"])
 def render_video():
-    # Get the API key from the request headers
-    # api_key = request.headers.get('X-API-Key')
-    
-    # if not api_key:
-    #     return jsonify({"error": "API key is missing"}), 401
-    
-    # Validate the API key and get the user ID
-    # user_id = get_user_by_api_key(api_key)
-    
-    # if not user_id:
-    #     return jsonify({"error": "Invalid API key"}), 401
-    
-    # Now that we have a valid user_id, create a run
-    # run_id = create_run_on_user(user_id, "video")
-    
-    # Extract the rest of the request data
-    code = request.json.get("code")
-    file_name = request.json.get("file_name")
-    file_class = request.json.get("file_class")
+    data = request.json or {}
 
-    user_id = request.json.get("user_id") or str(uuid.uuid4())
-    project_name = request.json.get("project_name")
-    iteration = request.json.get("iteration")
+    # Batch rendering path
+    if isinstance(data.get("codes"), list):
+        results = []
+        for i, item in enumerate(data.get("codes", [])):
+            payload = {**data, **item}
+            payload.pop("codes", None)
+            payload["iteration"] = f"{data.get('iteration', 0)}-{i}"
+            payload.setdefault("stream", False)
+            start = time.time()
+            with current_app.test_request_context(json=payload):
+                resp = render_video()
+                if isinstance(resp, tuple):
+                    resp_obj, status = resp
+                    res_json = resp_obj.get_json()
+                else:
+                    res_json = resp.get_json()
+            results.append({
+                "prompt": item.get("prompt"),
+                "code": item.get("code"),
+                "video_url": res_json.get("video_url") if res_json else None,
+                "time": time.time() - start,
+            })
+        return jsonify({"videos": results}), 200
+
+    # Extract the rest of the request data for single rendering
+    code = data.get("code")
+    file_name = data.get("file_name")
+    file_class = data.get("file_class")
+
+    user_id = data.get("user_id") or str(uuid.uuid4())
+    project_name = data.get("project_name")
+    iteration = data.get("iteration")
 
     # Aspect Ratio can be: "16:9" (default), "1:1", "9:16"
-    aspect_ratio = request.json.get("aspect_ratio")
+    aspect_ratio = data.get("aspect_ratio")
 
     # Stream the percentage of animation it shown in the error
-    stream = request.json.get("stream", False)
+    stream = data.get("stream", False)
 
     video_storage_file_name = f"video-{user_id}-{project_name}-{iteration}"
 
