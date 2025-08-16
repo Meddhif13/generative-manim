@@ -1,5 +1,6 @@
 from flask import Blueprint, jsonify, request
-import anthropic
+# Anthropic support temporarily disabled; keep placeholder for future use.
+# import anthropic
 import os
 from openai import OpenAI
 
@@ -33,25 +34,10 @@ def construct(self):
 4. Do not explain the code, only the code.
     """
 
+
     if model.startswith("claude-"):
-        client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
-        messages = [{"role": "user", "content": prompt_content}]
-        try:
-            response = client.messages.create(
-                model=model,
-                max_tokens=1000,
-                temperature=0.2,
-                system=general_system_prompt,
-                messages=messages,
-            )
-
-            # Extract the text content from the response
-            code = "".join(block.text for block in response.content)
-
-            return jsonify({"code": code})
-
-        except Exception as e:
-            return jsonify({"error": str(e)}), 500
+        # Anthropic models are disabled in this environment. Keep this branch as a placeholder.
+        return jsonify({"error": "Anthropic models are temporarily disabled. Use an OpenAI model like 'gpt-4o'."}), 400
 
     else:
         client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
