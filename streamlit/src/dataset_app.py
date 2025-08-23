@@ -36,6 +36,19 @@ def log_event(action: str, details: str) -> None:
         f.write(f"{datetime.utcnow().isoformat()}\t{action}\t{details}\n")
 
 
+def create_checkpoint(name: str) -> None:
+    """Snapshot current prompt, code, video and rules."""
+    cp = {
+        "name": name,
+        "prompt": st.session_state.get("prompt", ""),
+        "code": st.session_state.get("code", ""),
+        "video_url": st.session_state.get("video_url", ""),
+        "rules": list(st.session_state.get("rules", [])),
+    }
+    st.session_state.checkpoints.append(cp)
+    log_event("checkpoint", name)
+
+
 def describe_image(image_bytes: bytes, rules: List[str]) -> Dict[str, Any]:
     """Call a multimodal model to describe the image.
 
@@ -172,6 +185,7 @@ def main() -> None:
             result = generate_code(st.session_state.prompt, st.session_state.rules)
             st.session_state.code = result["code"]
             st.session_state.model_metadata["code_model"] = result.get("model")
+            create_checkpoint(f"code-{len(st.session_state.checkpoints) + 1}")
             log_event("code_generation", "")
 
     # ------------------------------------------------------------------ Code
@@ -187,15 +201,7 @@ def main() -> None:
                 log_event("video_render", video_url)
 
         if st.button("Create Checkpoint"):
-            cp = {
-                "name": f"cp-{len(st.session_state.checkpoints) + 1}",
-                "prompt": st.session_state.get("prompt", ""),
-                "code": st.session_state.get("code", ""),
-                "video_url": st.session_state.get("video_url", ""),
-                "rules": list(st.session_state.rules),
-            }
-            st.session_state.checkpoints.append(cp)
-            log_event("checkpoint", cp["name"])
+            create_checkpoint(f"cp-{len(st.session_state.checkpoints) + 1}")
 
     # ------------------------------------------------------------------ Video
     with cols[3]:
@@ -226,6 +232,7 @@ def main() -> None:
             response = refine_chat(user_msg, st.session_state, st.session_state.rules)
             st.session_state.chat_history.append({"role": "assistant", "content": response["message"]})
             st.session_state.model_metadata["chat_model"] = response.get("model")
+            create_checkpoint(f"chat-{len(st.session_state.checkpoints) + 1}")
             log_event("chat", user_msg)
             st.experimental_rerun()
 

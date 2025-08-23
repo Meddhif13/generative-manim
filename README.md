@@ -53,9 +53,11 @@ streamlit run streamlit/src/dataset_app.py
 ```
 
 Upload an exercise screenshot and iteratively build a prompt, Manim code and a
-rendered video. Approving a session writes a structured record to
-`datasets/generated.jsonl` and appends a timestamped entry to
-`logs/progress.md`.
+rendered video. The app automatically saves checkpoints after each code
+generation and chat refinement so you can revert to previous states. You can
+also create manual checkpoints from the *Code* section. Approving a session
+writes a structured record to `datasets/generated.jsonl` and appends a
+timestamped entry to `logs/progress.md`.
 
 ## 💻 Models
 
