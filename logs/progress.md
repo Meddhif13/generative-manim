@@ -5,3 +5,5 @@
 - Introduced `DatasetRecord` dataclass and JSONL writer utility (`tools/dataset_builder/dataset_writer.py`).
 - Documented dataset generation interface in README (`README.md`).
 - Connected chat interface to real `/v1/chat/generation` API with streaming responses (`streamlit/src/dataset_app.py`).
+- Added UI controls to edit and remove persistent rules (`streamlit/src/dataset_app.py`).
+

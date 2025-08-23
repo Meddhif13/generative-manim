@@ -236,8 +236,21 @@ def main() -> None:
             st.session_state.rules.append(new_rule)
             log_event("rule_added", new_rule)
             st.experimental_rerun()
-        for i, rule in enumerate(st.session_state.rules):
-            st.markdown(f"{i+1}. {rule}")
+
+        for i, rule in enumerate(list(st.session_state.rules)):
+            cols_rule = st.columns([4, 1])
+            with cols_rule[0]:
+                edited = st.text_input(
+                    f"Rule {i+1}", value=rule, key=f"rule_{i}"
+                )
+                if edited != rule:
+                    st.session_state.rules[i] = edited
+                    log_event("rule_edited", edited)
+            with cols_rule[1]:
+                if st.button("✖", key=f"del_rule_{i}"):
+                    removed = st.session_state.rules.pop(i)
+                    log_event("rule_removed", removed)
+                    st.experimental_rerun()
 
         if st.button("Approve"):
             record = DatasetRecord(
