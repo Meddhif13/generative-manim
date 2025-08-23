@@ -16,5 +16,8 @@
 - Added robust error handling, per-model timestamp metadata and configuration section (`streamlit/src/dataset_app.py`).
 
 - Implemented automatic image download from Google Drive and placeholder prompt generation with logging (`tools/dataset_builder/prompt_generator.py`, `tools/dataset_builder/images_config.json`).
+- Added Streamlit interface to display downloaded images and generated prompts (`streamlit/src/prompt_viewer.py`).
 2025-08-23T15:07:40.226938	image_download_error	https://drive.google.com/uc?id=1X7ZnQEqplLWYwgd0_zpZK0s8AjtKoa6G: 404 Client Error: Not Found for url: https://drive.usercontent.google.com/download?id=1X7ZnQEqplLWYwgd0_zpZK0s8AjtKoa6G
 2025-08-23T15:07:40.561648	image_download_error	https://drive.google.com/uc?id=1NgGDZ-infaWS0URKywH14r2raXI5Qun7: 404 Client Error: Not Found for url: https://drive.usercontent.google.com/download?id=1NgGDZ-infaWS0URKywH14r2raXI5Qun7
+2025-08-23T15:16:12.227039	image_download_error	https://drive.google.com/uc?id=1X7ZnQEqplLWYwgd0_zpZK0s8AjtKoa6G: 404 Client Error: Not Found for url: https://drive.usercontent.google.com/download?id=1X7ZnQEqplLWYwgd0_zpZK0s8AjtKoa6G
+2025-08-23T15:16:12.568528	image_download_error	https://drive.google.com/uc?id=1NgGDZ-infaWS0URKywH14r2raXI5Qun7: 404 Client Error: Not Found for url: https://drive.usercontent.google.com/download?id=1NgGDZ-infaWS0URKywH14r2raXI5Qun7
