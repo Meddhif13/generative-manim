@@ -13,15 +13,17 @@ left as placeholders for future development.
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import List
 
 import streamlit as st
 
 from tools.dataset_builder.prompt_generator import (
+    append_record,
     download_image,
     generate_prompt_from_image,
-    append_record,
+    list_images_in_folder,
     log_event,
 )
 
@@ -34,12 +36,23 @@ def load_urls() -> List[str]:
     """Return the list of image URLs from the configuration file."""
     with open(CONFIG_PATH, "r", encoding="utf-8") as f:
         data = json.load(f)
-    return data.get("images", []) if isinstance(data, dict) else data
+
+    urls: List[str] = []
+    if isinstance(data, dict):
+        urls.extend(data.get("images", []))
+        folder = data.get("folder_url") or data.get("folder_id")
+        if folder:
+            api_key = os.getenv("GOOGLE_API_KEY")
+            urls.extend(list_images_in_folder(folder, api_key))
+    else:
+        urls.extend(data)
+    return urls
 
 
 def main() -> None:
     st.title("Dataset Prompt Viewer")
     urls = load_urls()
+    st.write(f"Image {st.session_state.get('index', 0) + 1} / {len(urls)}")
 
     if "index" not in st.session_state:
         st.session_state.index = 0

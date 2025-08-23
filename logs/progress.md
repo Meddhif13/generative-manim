@@ -17,7 +17,12 @@
 
 - Implemented automatic image download from Google Drive and placeholder prompt generation with logging (`tools/dataset_builder/prompt_generator.py`, `tools/dataset_builder/images_config.json`).
 - Added Streamlit interface to display downloaded images and generated prompts (`streamlit/src/prompt_viewer.py`).
+- Extended dataset utilities to traverse Google Drive folders recursively and show per-image progress in the Streamlit viewer.
 2025-08-23T15:07:40.226938	image_download_error	https://drive.google.com/uc?id=1X7ZnQEqplLWYwgd0_zpZK0s8AjtKoa6G: 404 Client Error: Not Found for url: https://drive.usercontent.google.com/download?id=1X7ZnQEqplLWYwgd0_zpZK0s8AjtKoa6G
 2025-08-23T15:07:40.561648	image_download_error	https://drive.google.com/uc?id=1NgGDZ-infaWS0URKywH14r2raXI5Qun7: 404 Client Error: Not Found for url: https://drive.usercontent.google.com/download?id=1NgGDZ-infaWS0URKywH14r2raXI5Qun7
 2025-08-23T15:16:12.227039	image_download_error	https://drive.google.com/uc?id=1X7ZnQEqplLWYwgd0_zpZK0s8AjtKoa6G: 404 Client Error: Not Found for url: https://drive.usercontent.google.com/download?id=1X7ZnQEqplLWYwgd0_zpZK0s8AjtKoa6G
 2025-08-23T15:16:12.568528	image_download_error	https://drive.google.com/uc?id=1NgGDZ-infaWS0URKywH14r2raXI5Qun7: 404 Client Error: Not Found for url: https://drive.usercontent.google.com/download?id=1NgGDZ-infaWS0URKywH14r2raXI5Qun7
+2025-08-23T15:27:47.062215	progress	1/2
+2025-08-23T15:27:47.433206	image_download_error	https://drive.google.com/uc?id=1X7ZnQEqplLWYwgd0_zpZK0s8AjtKoa6G: 404 Client Error: Not Found for url: https://drive.usercontent.google.com/download?id=1X7ZnQEqplLWYwgd0_zpZK0s8AjtKoa6G
+2025-08-23T15:27:47.433987	progress	2/2
+2025-08-23T15:27:47.775591	image_download_error	https://drive.google.com/uc?id=1NgGDZ-infaWS0URKywH14r2raXI5Qun7: 404 Client Error: Not Found for url: https://drive.usercontent.google.com/download?id=1NgGDZ-infaWS0URKywH14r2raXI5Qun7

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import uuid
 from datetime import datetime
 from typing import Any, Dict, List
@@ -47,6 +48,68 @@ def download_image(url: str, download_dir: str = "downloads") -> str:
     return path
 
 
+def extract_drive_id(url_or_id: str) -> str:
+    """Extract the Google Drive file or folder ID from ``url_or_id``."""
+    match = re.search(r"/folders/([\w-]+)", url_or_id)
+    if match:
+        return match.group(1)
+    match = re.search(r"/d/([\w-]+)", url_or_id)
+    if match:
+        return match.group(1)
+    return url_or_id
+
+
+def list_images_in_folder(folder_url_or_id: str, api_key: str | None = None) -> List[str]:
+    """Return image download URLs for all files in a Drive folder tree.
+
+    Parameters
+    ----------
+    folder_url_or_id:
+        Public folder URL or ID.
+    api_key:
+        Optional Google API key stored in ``GOOGLE_API_KEY``.  If the key is
+        missing or the request fails, an empty list is returned and the error
+        is logged.
+    """
+
+    folder_id = extract_drive_id(folder_url_or_id)
+    base_url = "https://www.googleapis.com/drive/v3/files"
+
+    def _list(fid: str) -> List[str]:
+        urls: List[str] = []
+        page_token = None
+        while True:
+            params = {
+                "q": f"'{fid}' in parents and trashed=false",
+                "fields": "nextPageToken, files(id, mimeType)",
+                "pageSize": 1000,
+                "supportsAllDrives": True,
+            }
+            if api_key:
+                params["key"] = api_key
+            if page_token:
+                params["pageToken"] = page_token
+            try:
+                resp = requests.get(base_url, params=params, timeout=60)
+                resp.raise_for_status()
+            except requests.RequestException as e:  # pragma: no cover - network
+                log_event("folder_list_error", f"{fid}: {e}")
+                return []
+            data = resp.json()
+            for file in data.get("files", []):
+                mime = file.get("mimeType", "")
+                if mime == "application/vnd.google-apps.folder":
+                    urls.extend(_list(file["id"]))
+                elif mime.startswith("image/"):
+                    urls.append(f"https://drive.google.com/uc?id={file['id']}")
+            page_token = data.get("nextPageToken")
+            if not page_token:
+                break
+        return urls
+
+    return _list(folder_id)
+
+
 def generate_prompt_from_image(image_bytes: bytes, model: str = "placeholder-model") -> Dict[str, Any]:
     """Generate a description and learning objectives from ``image_bytes``.
 
@@ -67,20 +130,24 @@ def append_record(record: Dict[str, Any], output_file: str) -> None:
 
 
 def process_images(config_path: str, output_file: str = "datasets/prompts_only.jsonl") -> None:
-    """Download images listed in ``config_path`` and generate prompts.
+    """Download images listed in ``config_path`` and generate prompts."""
 
-    Parameters
-    ----------
-    config_path:
-        Path to a JSON file containing an ``images`` list with Google
-        Drive URLs or file IDs.
-    output_file:
-        Location of the JSONL file where prompt records are appended.
-    """
     with open(config_path, "r", encoding="utf-8") as f:
         data = json.load(f)
-    urls = data.get("images", []) if isinstance(data, dict) else data
-    for url in urls:
+
+    urls: List[str] = []
+    if isinstance(data, dict):
+        urls.extend(data.get("images", []))
+        folder = data.get("folder_url") or data.get("folder_id")
+        if folder:
+            api_key = os.getenv("GOOGLE_API_KEY")
+            urls.extend(list_images_in_folder(folder, api_key))
+    else:
+        urls.extend(data)
+
+    total = len(urls)
+    for idx, url in enumerate(urls, 1):
+        log_event("progress", f"{idx}/{total}")
         try:
             path = download_image(url)
         except requests.RequestException as e:
