@@ -45,16 +45,17 @@ It began as a prototype of a web app that uses [GPT-4](https://openai.com/resear
 
 ## 🧰 Dataset Generation Tool
 
-Work has begun on a new Streamlit interface for dataset creation. The initial
-skeleton lives in `streamlit/src/app_skeleton.py` and can be launched with:
+Work has begun on a new Streamlit interface for dataset creation. The updated
+skeleton with placeholders for **Image**, **Prompt**, **Code**, **Video** and
+**Chat** lives in `streamlit/src/app_skeleton.py` and can be launched with:
 
 ```bash
 streamlit run streamlit/src/app_skeleton.py
 ```
 
-This first step provides an image uploader that displays the selected exercise
-image. Additional functionality—prompt generation, code rendering, video
-preview and chat refinement—will be added incrementally.
+This early version provides an image uploader and shows empty sections for the
+full workflow. Additional functionality—prompt generation, code rendering,
+video preview and chat refinement—will be added incrementally.
 
 ## 💻 Models
 
