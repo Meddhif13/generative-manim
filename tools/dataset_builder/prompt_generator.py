@@ -15,7 +15,6 @@ import json
 import os
 import re
 import uuid
-from datetime import datetime
 from typing import Any, Dict, List
 
 import requests
@@ -131,21 +130,35 @@ def append_record(record: Dict[str, Any], output_file: str) -> None:
         f.write(json.dumps(record, ensure_ascii=False) + "\n")
 
 
-def process_images(config_path: str, output_file: str = "datasets/prompts_only.jsonl") -> None:
-    """Download images listed in ``config_path`` and generate prompts."""
-
-    with open(config_path, "r", encoding="utf-8") as f:
-        data = json.load(f)
+def collect_urls(
+    config_path: str | None = None,
+    folder: str | None = None,
+    images: List[str] | None = None,
+) -> List[str]:
+    """Gather image URLs from a config file, folder, or direct list."""
 
     urls: List[str] = []
-    if isinstance(data, dict):
-        urls.extend(data.get("images", []))
-        folder = data.get("folder_url") or data.get("folder_id")
-        if folder:
-            api_key = os.getenv("GOOGLE_API_KEY")
-            urls.extend(list_images_in_folder(folder, api_key))
-    else:
-        urls.extend(data)
+    if config_path:
+        with open(config_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if isinstance(data, dict):
+            urls.extend(data.get("images", []))
+            conf_folder = data.get("folder_url") or data.get("folder_id")
+            if conf_folder:
+                api_key = os.getenv("GOOGLE_API_KEY")
+                urls.extend(list_images_in_folder(conf_folder, api_key))
+        else:
+            urls.extend(data)
+    if folder:
+        api_key = os.getenv("GOOGLE_API_KEY")
+        urls.extend(list_images_in_folder(folder, api_key))
+    if images:
+        urls.extend(images)
+    return urls
+
+
+def process_images(urls: List[str], output_file: str = "datasets/prompts_only.jsonl") -> None:
+    """Download each image in ``urls`` and generate prompts."""
 
     total = len(urls)
     for idx, url in enumerate(urls, 1):
@@ -197,11 +210,17 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(description="Generate prompts from Google Drive images")
-    parser.add_argument("--config", default="tools/dataset_builder/images_config.json", help="Path to image URL config file")
+    parser.add_argument("--config", help="Path to image URL config file")
+    parser.add_argument("--folder", help="Google Drive folder URL or ID")
+    parser.add_argument("--images", nargs="*", help="Direct image URLs")
     parser.add_argument(
         "--output",
         default="datasets/prompts_only.jsonl",
         help="Where to append generated prompt records",
     )
     args = parser.parse_args()
-    process_images(args.config, args.output)
+
+    urls = collect_urls(args.config, args.folder, args.images)
+    if not urls:
+        parser.error("No images provided. Use --config, --folder or --images.")
+    process_images(urls, args.output)

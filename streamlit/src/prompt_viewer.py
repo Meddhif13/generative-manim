@@ -1,9 +1,9 @@
 """Streamlit interface for viewing Google Drive images and generated prompts.
 
-This app processes one image at a time from the configuration in
-``tools/dataset_builder/images_config.json``.  Each image is downloaded,
+The user supplies a public Google Drive folder URL or ID and the app
+recursively lists all images inside it. Each image is downloaded,
 passed to ``generate_prompt_from_image`` (currently a stub) and displayed
-alongside the generated description and learning objectives.  Results are
+alongside the generated description and learning objectives. Results are
 appended to ``datasets/prompts_only.jsonl`` and key actions are logged
 via ``log_event`` for traceability.
 
@@ -12,10 +12,8 @@ left as placeholders for future development.
 """
 from __future__ import annotations
 
-import json
 import os
 from pathlib import Path
-from typing import List
 
 import streamlit as st
 
@@ -28,30 +26,31 @@ from tools.dataset_builder.prompt_generator import (
 from tools.log_utils import log_event
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-CONFIG_PATH = REPO_ROOT / "tools" / "dataset_builder" / "images_config.json"
 OUTPUT_FILE = REPO_ROOT / "datasets" / "prompts_only.jsonl"
-
-
-def load_urls() -> List[str]:
-    """Return the list of image URLs from the configuration file."""
-    with open(CONFIG_PATH, "r", encoding="utf-8") as f:
-        data = json.load(f)
-
-    urls: List[str] = []
-    if isinstance(data, dict):
-        urls.extend(data.get("images", []))
-        folder = data.get("folder_url") or data.get("folder_id")
-        if folder:
-            api_key = os.getenv("GOOGLE_API_KEY")
-            urls.extend(list_images_in_folder(folder, api_key))
-    else:
-        urls.extend(data)
-    return urls
 
 
 def main() -> None:
     st.title("Dataset Prompt Viewer")
-    urls = load_urls()
+
+    if "urls" not in st.session_state:
+        st.session_state.urls = []
+
+    folder = st.text_input(
+        "Google Drive folder URL or ID",
+        value=st.session_state.get("folder_url", ""),
+    )
+    if st.button("Load images"):
+        api_key = os.getenv("GOOGLE_API_KEY")
+        st.session_state.urls = list_images_in_folder(folder, api_key)
+        st.session_state.folder_url = folder
+        st.session_state.index = 0
+        st.session_state.pop("last_path", None)
+        st.session_state.pop("last_result", None)
+
+    urls = st.session_state.urls
+    if not urls:
+        st.info("Enter a Google Drive folder URL and click 'Load images' to begin.")
+        st.stop()
 
     if "index" not in st.session_state:
         st.session_state.index = 0
