@@ -19,3 +19,5 @@
 - Added Streamlit interface to display downloaded images and generated prompts (`streamlit/src/prompt_viewer.py`).
 - Extended dataset utilities to traverse Google Drive folders recursively and show per-image progress in the Streamlit viewer.
 - Refactored logging helper into a shared utility for reuse across tools (`tools/log_utils.py`).
+- Refined Streamlit prompt viewer with progress bar, side-by-side display, and approve/skip controls (`streamlit/src/prompt_viewer.py`).
+

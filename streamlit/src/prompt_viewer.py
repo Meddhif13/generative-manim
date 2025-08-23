@@ -52,46 +52,67 @@ def load_urls() -> List[str]:
 def main() -> None:
     st.title("Dataset Prompt Viewer")
     urls = load_urls()
-    st.write(f"Image {st.session_state.get('index', 0) + 1} / {len(urls)}")
 
     if "index" not in st.session_state:
         st.session_state.index = 0
 
-    if st.session_state.index >= len(urls):
+    total = len(urls)
+    current = st.session_state.index
+
+    if current >= total:
         st.success("All images processed")
         st.stop()
 
-    url = urls[st.session_state.index]
-    if st.button("Download and describe next image"):
-        try:
-            path = download_image(url)
-            with open(path, "rb") as img_f:
-                result = generate_prompt_from_image(img_f.read())
-            record = {
-                "image_path": path,
-                "description": result["description"],
-                "objectives": result["objectives"],
-                "model_used": result.get("model_used", "placeholder-model"),
-            }
-            append_record(record, str(OUTPUT_FILE))
-            st.session_state.last_path = path
-            st.session_state.last_result = result
-            st.session_state.index += 1
-            log_event("prompt_generated", Path(path).name)
-        except Exception as e:  # pragma: no cover - defensive
-            st.error(f"Failed to process image: {e}")
-            log_event("prompt_error", f"{url}: {e}")
+    st.write(f"Image {current + 1} / {total}")
+    st.progress(current / total)
 
-    if "last_path" in st.session_state:
-        st.image(st.session_state.last_path, caption="Downloaded image")
-        st.subheader("Description")
-        st.write(st.session_state.last_result["description"])
-        st.subheader("Objectives")
-        for obj in st.session_state.last_result["objectives"]:
-            st.write(f"- {obj}")
+    # If an image has not yet been processed, offer to generate its prompt
+    if "last_path" not in st.session_state:
+        if st.button("Generate prompt for current image"):
+            url = urls[current]
+            try:
+                path = download_image(url)
+                with open(path, "rb") as img_f:
+                    result = generate_prompt_from_image(img_f.read())
+                record = {
+                    "image_path": path,
+                    "description": result["description"],
+                    "objectives": result["objectives"],
+                    "model_used": result.get("model_used", "placeholder-model"),
+                }
+                append_record(record, str(OUTPUT_FILE))
+                st.session_state.last_path = path
+                st.session_state.last_result = result
+                log_event("prompt_generated", Path(path).name)
+            except Exception as e:  # pragma: no cover - defensive
+                st.error(f"Failed to process image: {e}")
+                log_event("prompt_error", f"{url}: {e}")
+    else:
+        col_img, col_prompt = st.columns(2)
+        with col_img:
+            st.image(st.session_state.last_path, caption="Downloaded image")
+        with col_prompt:
+            st.subheader("Description")
+            st.write(st.session_state.last_result["description"])
+            st.subheader("Objectives")
+            for obj in st.session_state.last_result["objectives"]:
+                st.write(f"- {obj}")
+
+            approve = st.button("Approve")
+            skip = st.button("Skip")
+
+        if approve or skip:
+            action = "prompt_approved" if approve else "prompt_skipped"
+            log_event(action, Path(st.session_state.last_path).name)
+            st.session_state.index += 1
+            st.session_state.pop("last_path")
+            st.session_state.pop("last_result")
+            st.experimental_rerun()
 
     st.write("---")
-    st.info("Code generation, video rendering and chat refinement will be added in future steps.")
+    st.info(
+        "Code generation, video rendering and chat refinement will be added in future steps."
+    )
 
 
 if __name__ == "__main__":  # pragma: no cover
