@@ -12,3 +12,6 @@
 - Simplified chat state initialization with `setdefault` (`streamlit/src/app_skeleton.py`).
 - Introduced minimal rule management allowing users to add and remove persistent rules (`streamlit/src/app_skeleton.py`).
 
+- Integrated real vision model via HTTP API, model selection dropdowns and user ID capture (`streamlit/src/dataset_app.py`).
+- Added robust error handling, per-model timestamp metadata and configuration section (`streamlit/src/dataset_app.py`).
+
