@@ -26,6 +26,34 @@ from tools.dataset_builder.dataset_writer import DatasetRecord, write_record
 API_URL = os.getenv("API_URL", "http://localhost:5000")
 
 # ---------------------------------------------------------------------------
+# Configuration
+# ---------------------------------------------------------------------------
+
+VISION_CONFIG = {
+    "endpoint": os.getenv(
+        "VISION_ENDPOINT", "https://api.openai.com/v1/chat/completions"
+    ),
+    "api_key": os.getenv("VISION_API_KEY") or os.getenv("OPENAI_API_KEY", ""),
+    "default_model": os.getenv("VISION_MODEL", "gpt-4o-mini-vision"),
+}
+
+CODE_CONFIG = {
+    "endpoint": f"{API_URL}/v1/code/generation",
+    "default_model": os.getenv("CODE_MODEL", "gpt-4o"),
+}
+
+CHAT_CONFIG = {
+    "endpoint": f"{API_URL}/v1/chat/generation",
+    "default_model": os.getenv("CHAT_MODEL", "gpt-4o"),
+}
+
+VIDEO_CONFIG = {"endpoint": f"{API_URL}/v1/video/rendering"}
+
+VISION_MODELS = [VISION_CONFIG["default_model"], "gpt-4o-vision-preview"]
+CODE_MODELS = [CODE_CONFIG["default_model"], "gpt-4.1"]
+CHAT_MODELS = [CHAT_CONFIG["default_model"], "gpt-3.5-turbo"]
+
+# ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
@@ -36,41 +64,85 @@ def log_event(action: str, details: str) -> None:
         f.write(f"{datetime.utcnow().isoformat()}\t{action}\t{details}\n")
 
 
-def describe_image(image_bytes: bytes, rules: List[str]) -> Dict[str, Any]:
+def describe_image(image_bytes: bytes, rules: List[str], model: str) -> Dict[str, Any]:
     """Call a multimodal model to describe the image.
 
-    This function is currently a placeholder.  It demonstrates how an image
-    could be sent to a multimodal endpoint.  Developers can replace the body
-    with a real model call (OpenAI, Anthropic, HuggingFace, ...).
+    Parameters
+    ----------
+    image_bytes:
+        Raw bytes of the uploaded image.
+    rules:
+        Persistent rules provided by the user.
+    model:
+        Name of the vision model to use.
+
+    Returns
+    -------
+    Dict[str, Any]
+        Mapping containing a textual ``description`` of the image,
+        ``objectives`` list and the ``model`` name.
     """
 
-    _ = image_bytes, rules  # unused in placeholder
-    return {
-        "description": "Describe the exercise shown in the image.",
-        "objectives": ["Identify shapes", "Apply geometry rules"],
-        "model": "placeholder-vision"
+    b64 = base64.b64encode(image_bytes).decode("utf-8")
+    prompt = "Describe the exercise shown in the image with relevant details."
+    if rules:
+        prompt += "\n\nRules:\n" + "\n".join(rules)
+    if not VISION_CONFIG["api_key"]:
+        raise RuntimeError("Vision API key not configured")
+    headers = {
+        "Authorization": f"Bearer {VISION_CONFIG['api_key']}",
+        "Content-Type": "application/json",
     }
+    payload = {
+        "model": model,
+        "messages": [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": prompt},
+                    {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64}"}},
+                ],
+            }
+        ],
+        "temperature": 0.2,
+    }
+    try:
+        resp = requests.post(
+            VISION_CONFIG["endpoint"], headers=headers, json=payload, timeout=60
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        description = data["choices"][0]["message"]["content"]
+        return {"description": description, "objectives": [], "model": model}
+    except requests.RequestException as e:
+        raise RuntimeError(f"Vision API error: {e}") from e
 
 
-def generate_code(prompt: str, rules: List[str]) -> Dict[str, Any]:
+def generate_code(prompt: str, rules: List[str], model: str) -> Dict[str, Any]:
     """Generate Manim code by calling the Flask API."""
-    payload = {"prompt": prompt + "\n" + "\n".join(rules), "model": "gpt-4o"}
-    resp = requests.post(f"{API_URL}/v1/code/generation", json=payload, timeout=60)
-    resp.raise_for_status()
-    data = resp.json()
-    return {"code": data.get("code", ""), "model": "gpt-4o"}
+    payload = {"prompt": prompt + "\n" + "\n".join(rules), "model": model}
+    try:
+        resp = requests.post(CODE_CONFIG["endpoint"], json=payload, timeout=60)
+        resp.raise_for_status()
+        data = resp.json()
+        return {"code": data.get("code", ""), "model": model}
+    except requests.RequestException as e:
+        raise RuntimeError(f"Code generation failed: {e}") from e
 
 
 def render_video(code: str) -> str:
     """Render the provided code through the video rendering API."""
     payload = {"code": code, "file_class": "GenScene", "stream": False}
-    resp = requests.post(f"{API_URL}/v1/video/rendering", json=payload, timeout=300)
-    resp.raise_for_status()
+    try:
+        resp = requests.post(VIDEO_CONFIG["endpoint"], json=payload, timeout=300)
+        resp.raise_for_status()
+    except requests.RequestException as e:
+        raise RuntimeError(f"Video rendering failed: {e}") from e
     data = resp.json()
     return data.get("video_url", "")
 
 
-def refine_chat(message: str, context: Dict[str, Any], rules: List[str]) -> Dict[str, str]:
+def refine_chat(message: str, context: Dict[str, Any], rules: List[str], model: str) -> Dict[str, str]:
     """Refine prompt or code based on a chat message using the API.
 
     The chat generation endpoint streams responses as Server Sent Events.  This
@@ -86,13 +158,16 @@ def refine_chat(message: str, context: Dict[str, Any], rules: List[str]) -> Dict
         "prompt": f"Prompt:\n{context.get('prompt', '')}\n\nCode:\n{context.get('code', '')}",
         "globalPrompt": "\n".join(rules),
         "engine": "openai",
-        "model": "gpt-4o",
+        "model": model,
     }
 
-    resp = requests.post(
-        f"{API_URL}/v1/chat/generation", json=payload, stream=True, timeout=60
-    )
-    resp.raise_for_status()
+    try:
+        resp = requests.post(
+            CHAT_CONFIG["endpoint"], json=payload, stream=True, timeout=60
+        )
+        resp.raise_for_status()
+    except requests.RequestException as e:
+        raise RuntimeError(f"Chat refinement failed: {e}") from e
 
     chunks: List[str] = []
     for line in resp.iter_lines():
@@ -104,7 +179,7 @@ def refine_chat(message: str, context: Dict[str, Any], rules: List[str]) -> Dict
                 break
             chunks.append(content)
 
-    return {"message": "".join(chunks), "model": "gpt-4o"}
+    return {"message": "".join(chunks), "model": model}
 
 
 # ---------------------------------------------------------------------------
@@ -138,6 +213,29 @@ def main() -> None:
         st.session_state.checkpoints = []
     if "model_metadata" not in st.session_state:
         st.session_state.model_metadata = {}
+    if "user_id" not in st.session_state:
+        st.session_state.user_id = ""
+
+    cfg_cols = st.columns(4)
+    with cfg_cols[0]:
+        st.session_state.user_id = st.text_input(
+            "User ID", value=st.session_state.user_id
+        )
+    with cfg_cols[1]:
+        vision_model = st.selectbox(
+            "Vision Model", VISION_MODELS, key="vision_model", index=0
+        )
+        st.session_state.model_metadata["vision_model"] = vision_model
+    with cfg_cols[2]:
+        code_model = st.selectbox(
+            "Code Model", CODE_MODELS, key="code_model", index=0
+        )
+        st.session_state.model_metadata["code_model"] = code_model
+    with cfg_cols[3]:
+        chat_model = st.selectbox(
+            "Chat Model", CHAT_MODELS, key="chat_model", index=0
+        )
+        st.session_state.model_metadata["chat_model"] = chat_model
 
     cols = st.columns(5)
 
@@ -154,9 +252,15 @@ def main() -> None:
             with open(image_path, "wb") as f:
                 f.write(img_bytes)
             st.session_state.image_path = image_path
-            desc = describe_image(img_bytes, st.session_state.rules)
-            st.session_state.prompt = desc["description"]
-            st.session_state.model_metadata["vision_model"] = desc.get("model")
+            try:
+                model = st.session_state.model_metadata.get("vision_model", VISION_CONFIG["default_model"])
+                desc = describe_image(img_bytes, st.session_state.rules, model)
+                st.session_state.prompt = desc["description"]
+                st.session_state.model_metadata["vision_model"] = desc.get("model", model)
+                st.session_state.model_metadata["vision_model_ts"] = datetime.utcnow().isoformat()
+            except RuntimeError as e:
+                st.error(str(e))
+                log_event("vision_error", str(e))
             st.image(image_path)
             log_event("image_upload", image_path)
         elif st.session_state.get("image_path"):
@@ -168,11 +272,17 @@ def main() -> None:
         st.session_state.prompt = st.text_area(
             "Prompt", value=st.session_state.get("prompt", ""), height=300
         )
-        if st.button("Generate Code"):
-            result = generate_code(st.session_state.prompt, st.session_state.rules)
-            st.session_state.code = result["code"]
-            st.session_state.model_metadata["code_model"] = result.get("model")
-            log_event("code_generation", "")
+        if st.button("Generate Code", disabled=not st.session_state.prompt):
+            try:
+                model = st.session_state.model_metadata.get("code_model", CODE_CONFIG["default_model"])
+                result = generate_code(st.session_state.prompt, st.session_state.rules, model)
+                st.session_state.code = result["code"]
+                st.session_state.model_metadata["code_model"] = result.get("model", model)
+                st.session_state.model_metadata["code_model_ts"] = datetime.utcnow().isoformat()
+                log_event("code_generation", "")
+            except RuntimeError as e:
+                st.error(str(e))
+                log_event("code_error", str(e))
 
     # ------------------------------------------------------------------ Code
     with cols[2]:
@@ -180,11 +290,14 @@ def main() -> None:
         st.session_state.code = st.text_area(
             "Code", value=st.session_state.get("code", ""), height=300
         )
-        if st.button("Render Video"):
-            if st.session_state.code:
+        if st.button("Render Video", disabled=not st.session_state.code):
+            try:
                 video_url = render_video(st.session_state.code)
                 st.session_state.video_url = video_url
                 log_event("video_render", video_url)
+            except RuntimeError as e:
+                st.error(str(e))
+                log_event("video_error", str(e))
 
         if st.button("Create Checkpoint"):
             cp = {
@@ -221,12 +334,18 @@ def main() -> None:
         for msg in st.session_state.chat_history:
             st.markdown(f"**{msg['role']}:** {msg['content']}")
         user_msg = st.text_input("Message", key="chat_input")
-        if st.button("Send", key="chat_send") and user_msg:
+        if st.button("Send", key="chat_send", disabled=not user_msg) and user_msg:
             st.session_state.chat_history.append({"role": "user", "content": user_msg})
-            response = refine_chat(user_msg, st.session_state, st.session_state.rules)
-            st.session_state.chat_history.append({"role": "assistant", "content": response["message"]})
-            st.session_state.model_metadata["chat_model"] = response.get("model")
-            log_event("chat", user_msg)
+            try:
+                model = st.session_state.model_metadata.get("chat_model", CHAT_CONFIG["default_model"])
+                response = refine_chat(user_msg, st.session_state, st.session_state.rules, model)
+                st.session_state.chat_history.append({"role": "assistant", "content": response["message"]})
+                st.session_state.model_metadata["chat_model"] = response.get("model", model)
+                st.session_state.model_metadata["chat_model_ts"] = datetime.utcnow().isoformat()
+                log_event("chat", user_msg)
+            except RuntimeError as e:
+                st.error(str(e))
+                log_event("chat_error", str(e))
             st.experimental_rerun()
 
         # Rule management
