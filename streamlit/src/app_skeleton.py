@@ -20,6 +20,8 @@ def main() -> None:
     image: Image.Image | None = st.session_state.get("image")
     prompt: str = st.session_state.get("prompt", "")
     code: str = st.session_state.get("code", "")
+    if "chat" not in st.session_state:
+        st.session_state.chat: list[dict[str, str]] = []
 
     cols = st.columns(5)
 
@@ -50,8 +52,13 @@ def main() -> None:
 
     with cols[4]:
         st.header("Chat")
-        st.write("Chat history will appear here.")
-        st.text_input("", label_visibility="collapsed")
+        chat_container = st.container()
+        for message in st.session_state.chat:
+            chat_container.chat_message(message["role"]).write(message["content"])
+        user_message = st.chat_input("Send a message", key="chat_input")
+        if user_message:
+            st.session_state.chat.append({"role": "user", "content": user_message})
+            chat_container.chat_message("user").write(user_message)
 
 
 if __name__ == "__main__":

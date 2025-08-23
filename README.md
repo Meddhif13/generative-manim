@@ -53,9 +53,10 @@ skeleton with placeholders for **Image**, **Prompt**, **Code**, **Video** and
 streamlit run streamlit/src/app_skeleton.py
 ```
 
-This early version provides an image uploader and shows empty sections for the
-full workflow. Additional functionality—prompt generation, code rendering,
-video preview and chat refinement—will be added incrementally.
+This early version provides an image uploader and shows placeholder sections for
+the full workflow along with a basic chat log. Additional functionality—prompt
+generation, code rendering, video preview and chat refinement—will be added
+incrementally.
 
 ## 💻 Models
 
