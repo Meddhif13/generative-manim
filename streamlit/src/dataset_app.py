@@ -57,11 +57,7 @@ CHAT_MODELS = [CHAT_CONFIG["default_model"], "gpt-3.5-turbo"]
 # Helpers
 # ---------------------------------------------------------------------------
 
-def log_event(action: str, details: str) -> None:
-    """Append an entry to ``logs/progress.md`` with a timestamp."""
-    os.makedirs("logs", exist_ok=True)
-    with open("logs/progress.md", "a", encoding="utf-8") as f:
-        f.write(f"{datetime.utcnow().isoformat()}\t{action}\t{details}\n")
+from tools.log_utils import log_event
 
 
 def describe_image(image_bytes: bytes, rules: List[str], model: str) -> Dict[str, Any]:
