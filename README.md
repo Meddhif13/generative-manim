@@ -43,6 +43,20 @@ It began as a prototype of a web app that uses [GPT-4](https://openai.com/resear
 - 🧑‍💻 [Generative Manim Developers](https://discord.gg/HkbYEGybGv): Join our Discord server, learn new things, share your creations and more!
 - 🍎 [Generative Manim Streamlit (Legacy)](https://github.com/360macky/generative-manim/tree/main/streamlit): First LLM exploration of LLMs and Animation.
 
+## 🧰 Dataset Generation Tool
+
+An experimental Streamlit interface for dataset creation lives in
+`streamlit/src/dataset_app.py`. Launch it with:
+
+```bash
+streamlit run streamlit/src/dataset_app.py
+```
+
+Upload an exercise screenshot and iteratively build a prompt, Manim code and a
+rendered video. Approving a session writes a structured record to
+`datasets/generated.jsonl` and appends a timestamped entry to
+`logs/progress.md`.
+
 ## 💻 Models
 
 **Models** are the core of Generative Manim. A model is a way to convert text to code, that can later be rendered in a video.
