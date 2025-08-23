@@ -6,4 +6,9 @@
 - Documented dataset generation interface in README (`README.md`).
 - Connected chat interface to real `/v1/chat/generation` API with streaming responses (`streamlit/src/dataset_app.py`).
 - Added UI controls to edit and remove persistent rules (`streamlit/src/dataset_app.py`).
+- Started new dataset generation app rebuild with an image upload skeleton (`streamlit/src/app_skeleton.py`).
+- Expanded skeleton with side-by-side placeholders for prompt, code, video and chat (`streamlit/src/app_skeleton.py`).
+- Added simple chat history using Streamlit's chat components (`streamlit/src/app_skeleton.py`).
+- Simplified chat state initialization with `setdefault` (`streamlit/src/app_skeleton.py`).
+- Introduced minimal rule management allowing users to add and remove persistent rules (`streamlit/src/app_skeleton.py`).
 
