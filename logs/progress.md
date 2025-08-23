@@ -15,3 +15,4 @@
 - Integrated real vision model via HTTP API, model selection dropdowns and user ID capture (`streamlit/src/dataset_app.py`).
 - Added robust error handling, per-model timestamp metadata and configuration section (`streamlit/src/dataset_app.py`).
 
+2025-08-23T14:45:55.292346	refine_app	structured vision output, improved validation and video model metadata

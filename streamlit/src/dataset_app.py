@@ -13,6 +13,7 @@ functions so different providers can be swapped out easily.
 from __future__ import annotations
 
 import base64
+import json
 from datetime import datetime
 import os
 import uuid
@@ -35,19 +36,25 @@ VISION_CONFIG = {
     ),
     "api_key": os.getenv("VISION_API_KEY") or os.getenv("OPENAI_API_KEY", ""),
     "default_model": os.getenv("VISION_MODEL", "gpt-4o-mini-vision"),
+    "timeout": int(os.getenv("VISION_TIMEOUT", "60")),
 }
 
 CODE_CONFIG = {
     "endpoint": f"{API_URL}/v1/code/generation",
     "default_model": os.getenv("CODE_MODEL", "gpt-4o"),
+    "timeout": int(os.getenv("CODE_TIMEOUT", "60")),
 }
 
 CHAT_CONFIG = {
     "endpoint": f"{API_URL}/v1/chat/generation",
     "default_model": os.getenv("CHAT_MODEL", "gpt-4o"),
+    "timeout": int(os.getenv("CHAT_TIMEOUT", "60")),
 }
 
-VIDEO_CONFIG = {"endpoint": f"{API_URL}/v1/video/rendering"}
+VIDEO_CONFIG = {
+    "endpoint": f"{API_URL}/v1/video/rendering",
+    "timeout": int(os.getenv("VIDEO_TIMEOUT", "300")),
+}
 
 VISION_MODELS = [VISION_CONFIG["default_model"], "gpt-4o-vision-preview"]
 CODE_MODELS = [CODE_CONFIG["default_model"], "gpt-4.1"]
@@ -84,7 +91,10 @@ def describe_image(image_bytes: bytes, rules: List[str], model: str) -> Dict[str
     """
 
     b64 = base64.b64encode(image_bytes).decode("utf-8")
-    prompt = "Describe the exercise shown in the image with relevant details."
+    prompt = (
+        "Describe the exercise shown in the image with relevant details."
+        " Respond in JSON with 'description' and 'objectives' (list)."
+    )
     if rules:
         prompt += "\n\nRules:\n" + "\n".join(rules)
     if not VISION_CONFIG["api_key"]:
@@ -108,13 +118,21 @@ def describe_image(image_bytes: bytes, rules: List[str], model: str) -> Dict[str
     }
     try:
         resp = requests.post(
-            VISION_CONFIG["endpoint"], headers=headers, json=payload, timeout=60
+            VISION_CONFIG["endpoint"],
+            headers=headers,
+            json=payload,
+            timeout=VISION_CONFIG["timeout"],
         )
         resp.raise_for_status()
         data = resp.json()
-        description = data["choices"][0]["message"]["content"]
-        return {"description": description, "objectives": [], "model": model}
-    except requests.RequestException as e:
+        content = data["choices"][0]["message"]["content"]
+        parsed = json.loads(content)
+        return {
+            "description": parsed.get("description", ""),
+            "objectives": parsed.get("objectives", []),
+            "model": model,
+        }
+    except (requests.RequestException, json.JSONDecodeError) as e:
         raise RuntimeError(f"Vision API error: {e}") from e
 
 
@@ -122,7 +140,9 @@ def generate_code(prompt: str, rules: List[str], model: str) -> Dict[str, Any]:
     """Generate Manim code by calling the Flask API."""
     payload = {"prompt": prompt + "\n" + "\n".join(rules), "model": model}
     try:
-        resp = requests.post(CODE_CONFIG["endpoint"], json=payload, timeout=60)
+        resp = requests.post(
+            CODE_CONFIG["endpoint"], json=payload, timeout=CODE_CONFIG["timeout"]
+        )
         resp.raise_for_status()
         data = resp.json()
         return {"code": data.get("code", ""), "model": model}
@@ -130,11 +150,18 @@ def generate_code(prompt: str, rules: List[str], model: str) -> Dict[str, Any]:
         raise RuntimeError(f"Code generation failed: {e}") from e
 
 
-def render_video(code: str) -> str:
-    """Render the provided code through the video rendering API."""
-    payload = {"code": code, "file_class": "GenScene", "stream": False}
+def render_video(code: str, model: str) -> str:
+    """Render ``code`` through the video rendering API using ``model``."""
+    payload = {
+        "code": code,
+        "file_class": "GenScene",
+        "stream": False,
+        "model": model,
+    }
     try:
-        resp = requests.post(VIDEO_CONFIG["endpoint"], json=payload, timeout=300)
+        resp = requests.post(
+            VIDEO_CONFIG["endpoint"], json=payload, timeout=VIDEO_CONFIG["timeout"]
+        )
         resp.raise_for_status()
     except requests.RequestException as e:
         raise RuntimeError(f"Video rendering failed: {e}") from e
@@ -163,7 +190,10 @@ def refine_chat(message: str, context: Dict[str, Any], rules: List[str], model: 
 
     try:
         resp = requests.post(
-            CHAT_CONFIG["endpoint"], json=payload, stream=True, timeout=60
+            CHAT_CONFIG["endpoint"],
+            json=payload,
+            stream=True,
+            timeout=CHAT_CONFIG["timeout"],
         )
         resp.raise_for_status()
     except requests.RequestException as e:
@@ -214,7 +244,7 @@ def main() -> None:
     if "model_metadata" not in st.session_state:
         st.session_state.model_metadata = {}
     if "user_id" not in st.session_state:
-        st.session_state.user_id = ""
+        st.session_state.user_id = os.getenv("USER_ID", "")
 
     cfg_cols = st.columns(4)
     with cfg_cols[0]:
@@ -272,7 +302,11 @@ def main() -> None:
         st.session_state.prompt = st.text_area(
             "Prompt", value=st.session_state.get("prompt", ""), height=300
         )
-        if st.button("Generate Code", disabled=not st.session_state.prompt):
+        missing_image = "image_path" not in st.session_state
+        disabled = not st.session_state.prompt or missing_image
+        if disabled:
+            st.info("Upload an image and provide a prompt to enable code generation.")
+        if st.button("Generate Code", disabled=disabled):
             try:
                 model = st.session_state.model_metadata.get("code_model", CODE_CONFIG["default_model"])
                 result = generate_code(st.session_state.prompt, st.session_state.rules, model)
@@ -290,10 +324,15 @@ def main() -> None:
         st.session_state.code = st.text_area(
             "Code", value=st.session_state.get("code", ""), height=300
         )
+        if not st.session_state.code:
+            st.info("Generate or paste code to render a video.")
         if st.button("Render Video", disabled=not st.session_state.code):
             try:
-                video_url = render_video(st.session_state.code)
+                model = st.session_state.model_metadata.get("code_model", CODE_CONFIG["default_model"])
+                video_url = render_video(st.session_state.code, model)
                 st.session_state.video_url = video_url
+                st.session_state.model_metadata["video_model"] = model
+                st.session_state.model_metadata["video_model_ts"] = datetime.utcnow().isoformat()
                 log_event("video_render", video_url)
             except RuntimeError as e:
                 st.error(str(e))
@@ -334,6 +373,8 @@ def main() -> None:
         for msg in st.session_state.chat_history:
             st.markdown(f"**{msg['role']}:** {msg['content']}")
         user_msg = st.text_input("Message", key="chat_input")
+        if not user_msg:
+            st.info("Enter a message to chat with the assistant.")
         if st.button("Send", key="chat_send", disabled=not user_msg) and user_msg:
             st.session_state.chat_history.append({"role": "user", "content": user_msg})
             try:
