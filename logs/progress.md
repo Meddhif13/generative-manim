@@ -10,4 +10,5 @@
 - Expanded skeleton with side-by-side placeholders for prompt, code, video and chat (`streamlit/src/app_skeleton.py`).
 - Added simple chat history using Streamlit's chat components (`streamlit/src/app_skeleton.py`).
 - Simplified chat state initialization with `setdefault` (`streamlit/src/app_skeleton.py`).
+- Introduced minimal rule management allowing users to add and remove persistent rules (`streamlit/src/app_skeleton.py`).
 

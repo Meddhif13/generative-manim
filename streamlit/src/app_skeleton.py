@@ -1,8 +1,8 @@
 """Minimal Streamlit application for dataset generation.
 
 This skeleton implements the first step of the new dataset generation tool.
-Users can upload an exercise image and view placeholder sections for prompt,
-code, video and chat to outline the forthcoming workflow.
+Users can upload an exercise image, manage persistent rules and view placeholder
+sections for prompt, code, video and chat to outline the forthcoming workflow.
 """
 
 from __future__ import annotations
@@ -21,6 +21,7 @@ def main() -> None:
     prompt: str = st.session_state.get("prompt", "")
     code: str = st.session_state.get("code", "")
     st.session_state.setdefault("chat", [])
+    st.session_state.setdefault("rules", [])
 
     cols = st.columns(5)
 
@@ -58,6 +59,23 @@ def main() -> None:
         if user_message:
             st.session_state.chat.append({"role": "user", "content": user_message})
             chat_container.chat_message("user").write(user_message)
+
+        st.subheader("Rules")
+        new_rule = st.text_input("Add rule", key="rule_input")
+        if st.button("Add Rule") and new_rule:
+            st.session_state.rules.append(new_rule)
+            st.session_state.rule_input = ""
+            st.experimental_rerun()
+        for i, rule in enumerate(list(st.session_state.rules)):
+            cols_rule = st.columns([4, 1])
+            with cols_rule[0]:
+                st.text_input(
+                    f"Rule {i + 1}", value=rule, key=f"rule_{i}", disabled=True
+                )
+            with cols_rule[1]:
+                if st.button("✖", key=f"del_rule_{i}"):
+                    st.session_state.rules.pop(i)
+                    st.experimental_rerun()
 
 
 if __name__ == "__main__":
