@@ -15,3 +15,6 @@
 - Integrated real vision model via HTTP API, model selection dropdowns and user ID capture (`streamlit/src/dataset_app.py`).
 - Added robust error handling, per-model timestamp metadata and configuration section (`streamlit/src/dataset_app.py`).
 
+- Implemented automatic image download from Google Drive and placeholder prompt generation with logging (`tools/dataset_builder/prompt_generator.py`, `tools/dataset_builder/images_config.json`).
+2025-08-23T15:07:40.226938	image_download_error	https://drive.google.com/uc?id=1X7ZnQEqplLWYwgd0_zpZK0s8AjtKoa6G: 404 Client Error: Not Found for url: https://drive.usercontent.google.com/download?id=1X7ZnQEqplLWYwgd0_zpZK0s8AjtKoa6G
+2025-08-23T15:07:40.561648	image_download_error	https://drive.google.com/uc?id=1NgGDZ-infaWS0URKywH14r2raXI5Qun7: 404 Client Error: Not Found for url: https://drive.usercontent.google.com/download?id=1NgGDZ-infaWS0URKywH14r2raXI5Qun7
