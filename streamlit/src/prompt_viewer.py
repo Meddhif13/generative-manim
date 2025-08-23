@@ -24,8 +24,8 @@ from tools.dataset_builder.prompt_generator import (
     download_image,
     generate_prompt_from_image,
     list_images_in_folder,
-    log_event,
 )
+from tools.log_utils import log_event
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CONFIG_PATH = REPO_ROOT / "tools" / "dataset_builder" / "images_config.json"

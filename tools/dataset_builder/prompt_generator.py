@@ -20,12 +20,14 @@ from typing import Any, Dict, List
 
 import requests
 
+try:
+    from tools.log_utils import log_event
+except ModuleNotFoundError:  # pragma: no cover - allow running as script
+    import sys
+    from pathlib import Path
 
-def log_event(action: str, details: str) -> None:
-    """Append an entry to ``logs/progress.md`` with a timestamp."""
-    os.makedirs("logs", exist_ok=True)
-    with open("logs/progress.md", "a", encoding="utf-8") as f:
-        f.write(f"{datetime.utcnow().isoformat()}\t{action}\t{details}\n")
+    sys.path.append(str(Path(__file__).resolve().parents[1]))
+    from log_utils import log_event
 
 
 def download_image(url: str, download_dir: str = "downloads") -> str:
