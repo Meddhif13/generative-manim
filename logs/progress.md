@@ -9,4 +9,5 @@
 - Started new dataset generation app rebuild with an image upload skeleton (`streamlit/src/app_skeleton.py`).
 - Expanded skeleton with side-by-side placeholders for prompt, code, video and chat (`streamlit/src/app_skeleton.py`).
 - Added simple chat history using Streamlit's chat components (`streamlit/src/app_skeleton.py`).
+- Simplified chat state initialization with `setdefault` (`streamlit/src/app_skeleton.py`).
 

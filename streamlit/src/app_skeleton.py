@@ -20,8 +20,7 @@ def main() -> None:
     image: Image.Image | None = st.session_state.get("image")
     prompt: str = st.session_state.get("prompt", "")
     code: str = st.session_state.get("code", "")
-    if "chat" not in st.session_state:
-        st.session_state.chat: list[dict[str, str]] = []
+    st.session_state.setdefault("chat", [])
 
     cols = st.columns(5)
 
