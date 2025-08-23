@@ -71,14 +71,40 @@ def render_video(code: str) -> str:
 
 
 def refine_chat(message: str, context: Dict[str, Any], rules: List[str]) -> Dict[str, str]:
-    """Refine prompt or code based on a chat message.
+    """Refine prompt or code based on a chat message using the API.
 
-    This is a simplified wrapper around the chat generation endpoint.  For the
-    sake of the example, it just echoes the message back.
+    The chat generation endpoint streams responses as Server Sent Events.  This
+    helper collects the streamed text into a single message string.  The
+    ``context`` dictionary is expected to contain the current ``prompt``,
+    ``code`` and the ``chat_history`` so far.  ``rules`` are appended as a
+    global prompt to guide the model.
     """
 
-    _ = context, rules  # placeholder usage
-    return {"message": f"Echo: {message}"}
+    history = context.get("chat_history", [])
+    payload = {
+        "messages": history + [{"role": "user", "content": message}],
+        "prompt": f"Prompt:\n{context.get('prompt', '')}\n\nCode:\n{context.get('code', '')}",
+        "globalPrompt": "\n".join(rules),
+        "engine": "openai",
+        "model": "gpt-4o",
+    }
+
+    resp = requests.post(
+        f"{API_URL}/v1/chat/generation", json=payload, stream=True, timeout=60
+    )
+    resp.raise_for_status()
+
+    chunks: List[str] = []
+    for line in resp.iter_lines():
+        if not line:
+            continue
+        if line.startswith(b"data: "):
+            content = line[len(b"data: "):].decode("utf-8")
+            if content.strip() == "[DONE]":
+                break
+            chunks.append(content)
+
+    return {"message": "".join(chunks), "model": "gpt-4o"}
 
 
 # ---------------------------------------------------------------------------
@@ -199,6 +225,7 @@ def main() -> None:
             st.session_state.chat_history.append({"role": "user", "content": user_msg})
             response = refine_chat(user_msg, st.session_state, st.session_state.rules)
             st.session_state.chat_history.append({"role": "assistant", "content": response["message"]})
+            st.session_state.model_metadata["chat_model"] = response.get("model")
             log_event("chat", user_msg)
             st.experimental_rerun()
 
